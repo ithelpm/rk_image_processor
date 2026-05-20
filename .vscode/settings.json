@@ -1,0 +1,5 @@
+{
+    "cmake.sourceDirectory": "/home/kyle/workspace/hyper_mixed/cpp",
+    "cmake.ignoreCMakeListsMissing": true,
+    "C_Cpp.default.compilerPath": "/usr/bin/clang++"
+}
