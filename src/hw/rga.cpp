@@ -7,9 +7,9 @@ namespace rga
     {
         switch (error)
         {
-        case RgaError::Unsupported:    return "RGA 不支援此平台";
-        case RgaError::Driver:         return "RGA driver 錯誤: " + std::to_string(driver_code);
-        case RgaError::BufferTooSmall: return "RGA 緩衝區大小不足";
+        case RgaError::Unsupported:    return "RGA: platform not supported";
+        case RgaError::Driver:         return "RGA driver error: " + std::to_string(driver_code);
+        case RgaError::BufferTooSmall: return "RGA: buffer too small";
         }
         return {};
     }
