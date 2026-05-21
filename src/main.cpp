@@ -6,6 +6,7 @@
 #include <string>
 #include <fstream>
 #include <optional>
+#include <span>
 #include <chrono>
 #include <thread>
 #include <mutex>
@@ -338,12 +339,21 @@ static bool process_frame(const uint8_t *raw, size_t raw_len,
         return false;
     }
 
-    // 若相機輸出已是 NV12，直接給 MPP；否則先用 RGA 轉換成 NV12
-    std::vector<uint8_t> nv12;
-    auto t0 = Clock::now();
-    if (v4l2_fmt != V4L2_PIX_FMT_NV12)
+    std::optional<std::vector<uint8_t>> jpeg;
+
+    if (v4l2_fmt == V4L2_PIX_FMT_NV12)
     {
-        nv12.resize(static_cast<size_t>(w * h * 3 / 2));
+        // NV12：直接傳原始 kernel buffer，省去一次 user-space 複製
+        if (timing) timing->rga_ms = 0;
+        auto t1 = Clock::now();
+        jpeg = enc.encode(std::span<const uint8_t>(raw, raw_len));
+        if (timing) timing->encode_ms = to_ms(Clock::now() - t1);
+    }
+    else
+    {
+        // 非 NV12：先用 RGA 硬體轉換成 NV12
+        auto t0 = Clock::now();
+        std::vector<uint8_t> nv12(static_cast<size_t>(w * h * 3 / 2));
         std::vector<uint8_t> src(raw, raw + raw_len);
         auto res = rga::rga_cvt_resize(src, w, h, rga_fmt,
                                        nv12, w, h, rga::fmt::YCB_CR_420_SP);
@@ -352,35 +362,18 @@ static bool process_frame(const uint8_t *raw, size_t raw_len,
             std::fprintf(stderr, "[rga] %s\n", res.message().c_str());
             return false;
         }
+        auto t1 = Clock::now();
+        if (timing) timing->rga_ms = to_ms(t1 - t0);
+        jpeg = enc.encode(nv12);
+        if (timing) timing->encode_ms = to_ms(Clock::now() - t1);
     }
-    else
-    {
-        nv12.resize(static_cast<size_t>(w * h * 3 / 2));
-        std::vector<uint8_t> src(raw, raw + raw_len);
-        auto res = rga::rga_cvt_resize(
-            src, w, h, rga_fmt,
-            nv12, w, h, rga::fmt::YCB_CR_420_SP);
-        if (!res)
-        {
-            std::fprintf(stderr, "[rga] 轉換失敗: %s\n", res.message().c_str());
-            return false;
-        }
-    }
-    auto t1 = Clock::now();
-    if (timing)
-        timing->rga_ms = to_ms(t1 - t0);
-
-    // MPP JPEG 硬體編碼
-    auto jpeg = enc.encode(nv12);
-    auto t2 = Clock::now();
-    if (timing)
-        timing->encode_ms = to_ms(t2 - t1);
     if (!jpeg)
     {
         std::fprintf(stderr, "[mpp] JPEG 編碼失敗\n");
         return false;
     }
 
+    auto t_write = Clock::now();
     std::ofstream ofs(out_path, std::ios::binary);
     if (!ofs.is_open())
     {
@@ -389,9 +382,8 @@ static bool process_frame(const uint8_t *raw, size_t raw_len,
     }
     ofs.write(reinterpret_cast<const char *>(jpeg->data()),
               static_cast<std::streamsize>(jpeg->size()));
-    auto t3 = Clock::now();
     if (timing)
-        timing->write_ms = to_ms(t3 - t2);
+        timing->write_ms = to_ms(Clock::now() - t_write);
 
     return true;
 }
