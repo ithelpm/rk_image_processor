@@ -1,3 +1,2 @@
-build/
-*.jpg
-.vscode/
+refer/
+.vscode/settings.json
