@@ -11,7 +11,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # 因此將 sysroot include 設為 PUBLIC，主程式目標也會繼承。
 add_library(hw_shim STATIC hw_shim.c)
 target_include_directories(hw_shim PUBLIC
-    ${CMAKE_SYSROOT}/usr/include
+    ${CMAKE_SYSROOT}/include
 )
 target_link_libraries(hw_shim PUBLIC dl)
 
