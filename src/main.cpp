@@ -275,7 +275,7 @@ struct FrameStats  { double dequeue_ms, process_ms, total_ms,
 
 static bool process_frame(const uint8_t* raw, size_t raw_len,
                           int w, int h, uint32_t v4l2_fmt,
-                          mpp_jpeg::MppJpegEncoder& enc,
+                          const mpp_jpeg::MppJpegEncoder& enc,
                           const std::string& out_path,
                           FrameTiming* timing)
 {
@@ -289,7 +289,7 @@ static bool process_frame(const uint8_t* raw, size_t raw_len,
     std::vector<uint8_t> nv12;
     auto t0 = Clock::now();
     if (v4l2_fmt == V4L2_PIX_FMT_NV12) {
-        nv12.assign(raw, raw + raw_len);
+        auto jpeg = enc.encode(std::span<const uint8_t>(raw, raw_len));
     } else {
         nv12.resize(static_cast<size_t>(w * h * 3 / 2));
         std::vector<uint8_t> src(raw, raw + raw_len);
@@ -314,6 +314,10 @@ static bool process_frame(const uint8_t* raw, size_t raw_len,
     }
 
     std::ofstream ofs(out_path, std::ios::binary);
+    if (!ofs.is_open()) {
+        std::fprintf(stderr, "[proc] 無法開啟 %s\n", out_path.c_str());
+        return false;
+    }
     ofs.write(reinterpret_cast<const char*>(jpeg->data()),
               static_cast<std::streamsize>(jpeg->size()));
     auto t3 = Clock::now();
@@ -449,10 +453,10 @@ int main(int argc, char* argv[])
             std::string out_path = "frame_" + std::to_string(fb.frame_idx) + ".jpg";
 
             FrameTiming ft{};
-            process_frame(fb.data.data(), fb.data.size(),
+            if (!process_frame(fb.data.data(), fb.data.size(),
                           cam.width, cam.height, cam.pixfmt,
-                          enc, out_path, &ft);
-
+                          enc, out_path, &ft));
+                std::fprintf(stderr, "[幀 %d] 處理失敗，跳過\n", fb.frame_idx + 1);
             auto t_end = Clock::now();
             double proc_ms = ft.rga_ms + ft.encode_ms + ft.write_ms;
             double tot_ms  = to_ms(t_end - fb.captured_at);

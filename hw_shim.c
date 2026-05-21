@@ -1,8 +1,7 @@
 /*
  * hw_shim.c — 薄 C 層，封裝 RGA3 與 MPP (MJPEG 編碼器)。
  *
- * 由 build.rs 透過 `cc` crate 編譯並直接靜態連結至最終二進位檔。
- * 以 C 語言撰寫，避免 C++ 預設參數導致的 Rust bindgen 解析問題。
+ * 由 CMake 以靜態庫方式編譯，透過 hw_shim STATIC 目標連結。
  */
 
 #include <stdlib.h>
