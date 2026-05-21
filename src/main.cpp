@@ -341,9 +341,17 @@ static bool process_frame(const uint8_t *raw, size_t raw_len,
     // 若相機輸出已是 NV12，直接給 MPP；否則先用 RGA 轉換成 NV12
     std::vector<uint8_t> nv12;
     auto t0 = Clock::now();
-    if (v4l2_fmt == V4L2_PIX_FMT_NV12)
+    if (v4l2_fmt != V4L2_PIX_FMT_NV12)
     {
-        auto jpeg = enc.encode(std::span<const uint8_t>(raw, raw_len));
+        nv12.resize(static_cast<size_t>(w * h * 3 / 2));
+        std::vector<uint8_t> src(raw, raw + raw_len);
+        auto res = rga::rga_cvt_resize(src, w, h, rga_fmt,
+                                       nv12, w, h, rga::fmt::YCB_CR_420_SP);
+        if (!res)
+        {
+            std::fprintf(stderr, "[rga] %s\n", res.message().c_str());
+            return false;
+        }
     }
     else
     {
@@ -541,10 +549,12 @@ int main(int argc, char *argv[])
             std::string out_path = "frame_" + std::to_string(fb.frame_idx) + ".jpg";
 
             FrameTiming ft{};
-            if(!process_frame(fb.data.data(), fb.data.size(),
-                          cam.width, cam.height, cam.pixfmt,
-                          enc, out_path, &ft));
+            if (!process_frame(fb.data.data(), fb.data.size(),
+                   cam.width, cam.height, cam.pixfmt,
+                   enc, out_path, &ft))
+            {
                 std::fprintf(stderr, "[幀 %d] 處理失敗，跳過\n", fb.frame_idx + 1);
+            }
             auto t_end = Clock::now();
             double proc_ms = ft.rga_ms + ft.encode_ms + ft.write_ms;
             double tot_ms  = to_ms(t_end - fb.captured_at);
