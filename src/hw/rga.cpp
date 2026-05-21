@@ -1,64 +1,33 @@
-#pragma once
-
-#include <cstdint>
-#include <span>
-#include <string>
+#include "rga.hpp"
 #include "../hw_shim.h"
 
 namespace rga
 {
-    namespace fmt
+    std::string RgaResult::message() const
     {
-        constexpr int YCB_CR_420_SP = 0xa << 8;  // NV12
-        constexpr int YCB_CR_422_SP = 0x8 << 8;  // NV16
-        constexpr int YCB_CR_444_SP = 0x32 << 8; // NV24
-        constexpr int BGR_888 = 0x7 << 8;        // BGR24（OpenCV 預設）
-        constexpr int RGB_888 = 0x2 << 8;        // RGB24
+        switch (error)
+        {
+        case RgaError::Unsupported:    return "RGA 不支援此平台";
+        case RgaError::Driver:         return "RGA driver 錯誤: " + std::to_string(driver_code);
+        case RgaError::BufferTooSmall: return "RGA 緩衝區大小不足";
+        }
+        return {};
     }
 
-    enum class RgaError
+    RgaResult rga_cvt_resize(std::span<uint8_t> src, int src_w, int src_h, int src_fmt,
+                             std::span<uint8_t> dst, int dst_w, int dst_h, int dst_fmt)
+#ifdef __aarch64__
     {
-        Unsupported,
-        Driver,
-        BufferTooSmall,
-    };
-
-    struct RgaResult
+        int ret = rk_rga_cvt_resize(src.data(), src_w, src_h, src_fmt,
+                                    dst.data(), dst_w, dst_h, dst_fmt);
+        return ret >= 0 ? RgaResult::success() : RgaResult::driver_err(ret);
+    }
+#else
     {
-        bool ok;
-        RgaError error = RgaError::Unsupported;
-        int driver_code = 0; // 只有 Driver 錯誤才有效
-
-        // 模仿 Rust 的 Ok(()) / Err(...)
-        static RgaResult success() { return {true}; }
-        static RgaResult unsupported() { return {false, RgaError::Unsupported, 0}; }
-        static RgaResult driver_err(int code) { return {false, RgaError::Driver, code}; }
-
-        // 讓 if (result) 可以直接用，對應 Rust 的 is_ok()
-        explicit operator bool() const { return ok; }
-
-        std::string message() const;
-
-    public:
-        RgaResult rga_cvt_resize(std::span<uint8_t> src, int src_w, int src_h, int src_fmt,
-                            std::span<uint8_t> dst, int dst_w, int dst_h, int dst_fmt)
-        {
-            int ret = rk_rga_cvt_resize(src.data(), src_w, src_h, src_fmt,
-                                        dst.data(), dst_w, dst_h, dst_fmt);
-            if (ret >= 0)
-            {
-                ok = true;
-            }
-            else
-            {
-                driver_err(ret);
-            }
-        }
-    };
-
-    // ── 主要介面 ───────────────────────────────────────────────────
-    RgaResult rga_cvt_resize(
-        std::span<uint8_t> src, int src_w, int src_h, int src_fmt,
-        std::span<uint8_t> dst, int dst_w, int dst_h, int dst_fmt);
+        (void)src; (void)src_w; (void)src_h; (void)src_fmt;
+        (void)dst; (void)dst_w; (void)dst_h; (void)dst_fmt;
+        return RgaResult::unsupported();
+    }
+#endif
 
 } // namespace rga
